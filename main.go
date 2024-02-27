@@ -13,7 +13,7 @@ import (
 
 func main() {
 	started := time.Now()
-	height, width := 25, 25
+	height, width := 22, 45
 	if g, err := run(height, width); err != nil {
 		log.Fatal(err)
 	} else if err := os.WriteFile("wilson.txt", g.toText(), 0644); err != nil {
@@ -161,83 +161,6 @@ func createGrid(height, width int) *grid {
 	return g
 }
 
-func mkmaze(height, width int) [][]rune {
-	// create the maze
-	maze := make([][]rune, height*2+1)
-	for row := range maze {
-		maze[row] = make([]rune, width*2+1)
-	}
-	north, east, south, west := 0, width*2, height*2, 0
-	for row := north; row <= south; row++ {
-		isNorthEdge, isSouthEdge := row == north, row == south
-		isRow := row%2 == 0
-		for col := west; col <= east; col++ {
-			isWestEdge, isEastEdge := col == west, col == east
-			isCol := col%2 == 0
-			if isNorthEdge && isWestEdge {
-				maze[row][col] = '╔'
-			} else if isNorthEdge && isEastEdge {
-				maze[row][col] = '╗'
-			} else if isNorthEdge && isCol {
-				maze[row][col] = '╦'
-			} else if isNorthEdge {
-				maze[row][col] = '═'
-			} else if isSouthEdge && isWestEdge {
-				maze[row][col] = '╚'
-			} else if isSouthEdge && isEastEdge {
-				maze[row][col] = '╝'
-			} else if isSouthEdge && isCol {
-				maze[row][col] = '╩'
-			} else if isSouthEdge {
-				maze[row][col] = '═'
-			} else if isWestEdge && isRow {
-				maze[row][col] = '╠'
-			} else if isWestEdge {
-				maze[row][col] = '║'
-			} else if isEastEdge && isRow {
-				maze[row][col] = '╣'
-			} else if isEastEdge {
-				maze[row][col] = '║'
-			} else if isRow && isCol {
-				maze[row][col] = '╬'
-			} else if isRow {
-				maze[row][col] = '═'
-			} else if isCol {
-				maze[row][col] = '║'
-			} else {
-				maze[row][col] = ' '
-			}
-		}
-	}
-
-	// create an entrance and an exit
-	entranceRow, exitRow := north, south
-
-	// entrances and exits will be on the western and eastern thirds of the maze.
-	thirdWidth := width / 3
-	if thirdWidth == 0 {
-		panic("maze too small to generate entrance or exit")
-	}
-	log.Printf("width is %5d\n", thirdWidth)
-
-	// Choose an entrance column within the western (first) third of the maze.
-	// The entrance should be a column that is an even number (a path column, not a wall) and
-	// is not on the west edge of the maze.
-	// We start from 2 (not 0, to not be on the western edge) and end at thirdWidth (not including).
-	entranceCol := west + rand.Intn(thirdWidth)*2 + 1
-
-	// Choose an exit column within the eastern (last) third of the maze.
-	// The exit should be a column that is an even number (a path, not a wall) and
-	// is not on the east edge of the maze.
-	exitCol := east - (rand.Intn(thirdWidth)*2 + 1)
-
-	// punch the entrance and exit
-	maze[entranceRow][entranceCol] = ' '
-	maze[exitRow][exitCol] = ' '
-
-	return maze
-}
-
 func (g *grid) allCells() []*cell {
 	var cells []*cell
 	for row := 0; row < g.height; row++ {
@@ -257,31 +180,124 @@ func (g *grid) clearWalk() {
 }
 
 func (g *grid) toText() []byte {
-	// create the maze
-	maze := mkmaze(g.height, g.width)
+	// define constants for the edges of the maze
+	north, east, south, west := 0, g.width-1, g.height-1, 0
 
-	// punch out walls
-	for row := 0; row < g.height; row++ {
-		crow := row*2 + 1
-		for col := 0; col < g.width; col++ {
-			c := g.cells[row][col]
-			ccol := col*2 + 1
-			if !c.walls.north {
-				maze[crow-1][ccol] = ' '
-			}
-			if !c.walls.east {
-				maze[crow][ccol+1] = ' '
-			}
-			if !c.walls.south {
-				maze[crow+1][ccol] = ' '
-			}
-			if !c.walls.west {
-				maze[crow][ccol-1] = ' '
-			}
+	// randomly assign an entrance and exit to the maze.
+	// entrances and exits will be on the western and eastern sides of the maze.
+	theGate := g.width / 6
+	// the entrance will be on the western third of the northern edge of the maze.
+	entranceRow, entranceCol := north, west
+	entranceCol = west + rand.Intn(theGate)
+	// the exit will be on the easter third of the southern edge of the maze.
+	exitRow, exitCol := south, east
+	exitCol = east - rand.Intn(theGate)
+	// set the flags on the entrance and exit cells
+	g.cells[entranceRow][entranceCol].walls.north = false
+	g.cells[exitRow][exitCol].walls.south = false
+
+	// allocate memory for the maze, which we're representing as runes
+	maze := make([][]rune, g.height*2+1)
+	for row := 0; row < len(maze); row++ {
+		maze[row] = make([]rune, g.width*2+1)
+		for n := range maze[row] {
+			maze[row][n] = '+'
 		}
 	}
 
-	// print out the maze
+	// now add the walls based on each cell's attributes
+	for row := north; row <= south; row++ {
+		for col := west; col <= east; col++ {
+			c := g.cells[row][col]
+
+			// derive the coordinates of the center of the cell in the maze array
+			cRow, cCol := row*2+1, col*2+1
+
+			// define flags for edges, rows, and columns
+			isNorthEdge, isSouthEdge := row == north, row == south
+			isWestEdge, isEastEdge := col == west, col == east
+
+			var glyph rune
+
+			// set the corners of the cell to the correct IBM box glyph
+			// start with the northwest corner of the cell
+			if isNorthEdge && isWestEdge {
+				glyph = '╔'
+			} else if isNorthEdge {
+				glyph = '╦'
+			} else if isWestEdge {
+				glyph = '╠'
+			} else {
+				glyph = '╬'
+			}
+			maze[cRow-1][cCol-1] = glyph
+			// set the northern edge of the cell
+			if c.walls.north {
+				glyph = '═'
+			} else {
+				glyph = ' '
+			}
+			maze[cRow-1][cCol] = glyph
+			// set the northeast corner of the cell
+			if isNorthEdge && isEastEdge {
+				glyph = '╗'
+			} else if isNorthEdge {
+				glyph = '╦'
+			} else if isEastEdge {
+				glyph = '╣'
+			} else {
+				glyph = '╬'
+			}
+			maze[cRow-1][cCol+1] = glyph
+			// set the eastern edge of the cell
+			if c.walls.east {
+				glyph = '║'
+			} else {
+				glyph = ' '
+			}
+			maze[cRow][cCol+1] = glyph
+			// set the southeast corner of the cell
+			if isSouthEdge && isEastEdge {
+				glyph = '╝'
+			} else if isSouthEdge {
+				glyph = '╩'
+			} else if isEastEdge {
+				glyph = '╣'
+			} else {
+				glyph = '╬'
+			}
+			maze[cRow+1][cCol+1] = glyph
+			// set the southern edge of the cell
+			if c.walls.south {
+				glyph = '═'
+			} else {
+				glyph = ' '
+			}
+			maze[cRow+1][cCol] = glyph
+			// set the southwest corner of the cell
+			if isSouthEdge && isWestEdge {
+				glyph = '╚'
+			} else if isSouthEdge {
+				glyph = '╩'
+			} else if isWestEdge {
+				glyph = '╠'
+			} else {
+				glyph = '╬'
+			}
+			maze[cRow+1][cCol-1] = glyph
+			// set the western edge of the cell
+			if c.walls.west {
+				glyph = '║'
+			} else {
+				glyph = ' '
+			}
+			maze[cRow][cCol-1] = glyph
+			// always set the center of the cell to a space
+			maze[cRow][cCol] = ' '
+		}
+	}
+
+	// convert the runes in the maze to a slice of bytes
 	b := &bytes.Buffer{}
 	for _, line := range maze {
 		for _, ch := range line {
