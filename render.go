@@ -10,7 +10,8 @@ import (
 )
 
 func (r *Rectangle) RenderPNG(w io.Writer, scale int) error {
-	return r.g.toPNG(w, scale)
+	height, width, lines := r.g.toLines(scale, scale/2)
+	return r.g.toPNG(w, height, width, lines)
 }
 
 func (r *Rectangle) RenderSVG(w io.Writer, scale int) error {
@@ -78,71 +79,20 @@ func (g *grid) toLines(scale int, gutter int) (height int, width int, lines []li
 
 // toPNG renders the grid as a PNG image file.
 // each cell is scaled and a gutter is added to the final image.
-func (g *grid) toPNG(w io.Writer, scale int) error {
-	// calculate the gutter
-	gutter := scale / 2
-	if gutter < 5 {
-		gutter = 5
-	}
-
-	// set the width and height of the image, assuming cells are scaled
-	// and including room for the gutter
-	width, height := g.width*scale+gutter*2, g.height*scale+gutter*2
-
+func (g *grid) toPNG(w io.Writer, height, width int, lines []line) error {
 	dc := gg.NewContext(width, height)
 
 	// set the background of the image to white
 	dc.SetRGB(1, 1, 1)
 	dc.Clear()
 
-	// the offset will be half the scale and allows for the gutter
-	offset := scale/2 + gutter
-	for x := 0; x < g.width; x++ {
-		// derive the center x value of the cell in the image, assuming cells are 10x10
-		cx := x*scale + offset
-		for y := 0; y < g.height; y++ {
-			// c is the cell that we're adding to the image
-			c := g.cells[y][x]
+	// draw walls as black lines, 3 pixels wide
+	dc.SetRGB(0, 0, 0)
+	dc.SetLineWidth(3)
 
-			// derive the center y value of the cell in the image
-			cy := y*scale + offset
-
-			// derive values for the four corners of the cell
-			type point struct {
-				x, y float64
-			}
-			nw := point{x: float64(cx - scale/2), y: float64(cy - scale/2)}
-			ne := point{x: float64(cx + scale/2), y: float64(cy - scale/2)}
-			sw := point{x: float64(cx - scale/2), y: float64(cy + scale/2)}
-			se := point{x: float64(cx + scale/2), y: float64(cy + scale/2)}
-
-			// draw walls as black lines
-			dc.SetRGB(0, 0, 0)
-
-			// make the walls 3 pixels wide
-			dc.SetLineWidth(3)
-
-			// if there is a wall blocking the path north, draw a line from NW to NE corners.
-			if c.walls.north {
-				dc.DrawLine(nw.x, nw.y, ne.x, ne.y)
-				dc.Stroke()
-			}
-			// if there is a wal blocking the path east, draw a line from the NE to SE corners.
-			if c.walls.east {
-				dc.DrawLine(ne.x, ne.y, se.x, se.y)
-				dc.Stroke()
-			}
-			// if there is a wall blocking the path south, draw a line from SE to SW corners.
-			if c.walls.south {
-				dc.DrawLine(se.x, se.y, sw.x, sw.y)
-				dc.Stroke()
-			}
-			// if there is a wall blocking the path west, draw a line from the SW to NW corners.
-			if c.walls.west {
-				dc.DrawLine(sw.x, sw.y, nw.x, nw.y)
-				dc.Stroke()
-			}
-		}
+	for _, l := range lines {
+		dc.DrawLine(l.from.x, l.from.y, l.to.x, l.to.y)
+		dc.Stroke()
 	}
 
 	// write the image as PNG
