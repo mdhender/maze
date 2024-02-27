@@ -5,18 +5,25 @@ package main
 
 import (
 	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"log"
+	"math"
 	"math/rand"
 	"os"
 	"time"
 )
 
 func main() {
+	rand.Seed(1)
 	started := time.Now()
 	height, width := 22, 45
 	if g, err := run(height, width); err != nil {
 		log.Fatal(err)
 	} else if err := os.WriteFile("wilson.txt", g.toText(), 0644); err != nil {
+		log.Fatal(err)
+	} else if err := g.toPNG("wilson.png", 20, false); err != nil {
 		log.Fatal(err)
 	}
 	log.Printf("maze: %5d x %5d in %v\n", height, width, time.Now().Sub(started))
@@ -83,6 +90,22 @@ func run(height, width int) (*grid, error) {
 			from = from.to
 		}
 	}
+
+	// define constants for the edges of the maze
+	north, east, south, west := 0, g.width-1, g.height-1, 0
+
+	// randomly assign an entrance and exit to the maze.
+	// entrances and exits will be on the western and eastern sides of the maze.
+	theGate := g.width / 6
+	// the entrance will be on the western third of the northern edge of the maze.
+	entranceRow, entranceCol := north, west
+	entranceCol = west + rand.Intn(theGate)
+	// the exit will be on the easter third of the southern edge of the maze.
+	exitRow, exitCol := south, east
+	exitCol = east - rand.Intn(theGate)
+	// set the flags on the entrance and exit cells
+	g.cells[entranceRow][entranceCol].walls.north = false
+	g.cells[exitRow][exitCol].walls.south = false
 
 	return g, nil
 }
@@ -161,6 +184,39 @@ func createGrid(height, width int) *grid {
 	return g
 }
 
+// drawLine implement Bresenham Line Drawing Algorithm
+func drawLine(img *image.RGBA, p1, p2 image.Point, col color.RGBA) {
+	dx, dy := math.Abs(float64(p2.X-p1.X)), math.Abs(float64(p2.Y-p1.Y))
+	sx, sy := p1.X < p2.X, p1.Y < p2.Y
+	err, e2 := dx-dy, 0.0
+
+	for {
+		img.Set(p1.X, p1.Y, col)
+
+		if p1.X == p2.X && p1.Y == p2.Y {
+			break
+		}
+
+		e2 = 2 * err
+		if e2 > -dy {
+			err -= dy
+			if sx {
+				p1.X++
+			} else {
+				p1.X--
+			}
+		}
+		if e2 < dx {
+			err += dx
+			if sy {
+				p1.Y++
+			} else {
+				p1.Y--
+			}
+		}
+	}
+}
+
 func (g *grid) allCells() []*cell {
 	var cells []*cell
 	for row := 0; row < g.height; row++ {
@@ -179,22 +235,97 @@ func (g *grid) clearWalk() {
 	}
 }
 
+// toPNG creates an image of the grid.
+// each cell is scaled and a gutter is added to the final image.
+func (g *grid) toPNG(path string, scale int, showCenter bool) error {
+	// calculate the gutter
+	gutter := scale / 2
+	if gutter < 5 {
+		gutter = 5
+	}
+
+	// set the width and height of the image, assuming cells are scaled
+	// and including room for the gutter
+	width, height := g.width*scale+gutter*2, g.height*scale+gutter*2
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	black := color.RGBA{A: 255}
+
+	// set the background of the image to white
+	for x := 0; x < width; x++ {
+		for y := 0; y < height; y++ {
+			img.Set(x, y, white)
+		}
+	}
+
+	// the offset will be half the scale and allows for the gutter
+	offset := scale/2 + gutter
+	for x := 0; x < g.width; x++ {
+		// derive the center x value of the cell in the image, assuming cells are 10x10
+		cx := x*scale + offset
+		for y := 0; y < g.height; y++ {
+			// c is the cell that we're adding to the image
+			c := g.cells[y][x]
+
+			// derive the center y value of the cell in the image
+			cy := y*scale + offset
+
+			// derive values for the four corners of the cell
+			nw := image.Point{cx - scale/2, cy - scale/2}
+			ne := image.Point{cx + scale/2, cy - scale/2}
+			sw := image.Point{cx - scale/2, cy + scale/2}
+			se := image.Point{cx + scale/2, cy + scale/2}
+
+			// set a black pixel in each corner of the cell
+			img.Set(nw.X, nw.Y, black)
+			img.Set(ne.X, ne.Y, black)
+			img.Set(se.X, se.Y, black)
+			img.Set(sw.X, sw.Y, black)
+
+			// set a black pixel in the center of the cell if requested
+			if showCenter {
+				img.Set(cx, cy, black)
+			}
+
+			// if there is a wall blocking the path north, draw a line from NW to NE corners.
+			if c.walls.north {
+				drawLine(img, nw, ne, black)
+			}
+			// if there is a wal blocking the path east, draw a line from the NE to SE corners.
+			if c.walls.east {
+				drawLine(img, ne, se, black)
+			}
+			// if there is a wall blocking the path south, draw a line from SE to SW corners.
+			if c.walls.south {
+				drawLine(img, se, sw, black)
+			}
+			// if there is a wall blocking the path west, draw a line from the SW to NW corners.
+			if c.walls.west {
+				drawLine(img, sw, nw, black)
+			}
+		}
+	}
+
+	// save the image as a PNG file
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	if err := png.Encode(f, img); err != nil {
+		return err
+	}
+	log.Printf("maze: created %s\n", path)
+	return nil
+}
+
 func (g *grid) toText() []byte {
 	// define constants for the edges of the maze
 	north, east, south, west := 0, g.width-1, g.height-1, 0
-
-	// randomly assign an entrance and exit to the maze.
-	// entrances and exits will be on the western and eastern sides of the maze.
-	theGate := g.width / 6
-	// the entrance will be on the western third of the northern edge of the maze.
-	entranceRow, entranceCol := north, west
-	entranceCol = west + rand.Intn(theGate)
-	// the exit will be on the easter third of the southern edge of the maze.
-	exitRow, exitCol := south, east
-	exitCol = east - rand.Intn(theGate)
-	// set the flags on the entrance and exit cells
-	g.cells[entranceRow][entranceCol].walls.north = false
-	g.cells[exitRow][exitCol].walls.south = false
 
 	// allocate memory for the maze, which we're representing as runes
 	maze := make([][]rune, g.height*2+1)
