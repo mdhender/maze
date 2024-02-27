@@ -5,9 +5,9 @@ package main
 
 import (
 	"bytes"
+	"github.com/fogleman/gg"
 	"image"
 	"image/color"
-	"image/png"
 	"log"
 	"math"
 	"math/rand"
@@ -16,17 +16,22 @@ import (
 )
 
 func main() {
-	rand.Seed(1)
+	//rand.Seed(1)
+
 	started := time.Now()
-	height, width := 22, 45
-	if g, err := run(height, width); err != nil {
+	height, width := 125, 125
+
+	g, err := run(height, width)
+	if err != nil {
 		log.Fatal(err)
-	} else if err := os.WriteFile("wilson.txt", g.toText(), 0644); err != nil {
+	}
+	log.Printf("maze: %5d x %5d in %v\n", height, width, time.Now().Sub(started))
+
+	if err := os.WriteFile("wilson.txt", g.toText(), 0644); err != nil {
 		log.Fatal(err)
 	} else if err := g.toPNG("wilson.png", 20, false); err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("maze: %5d x %5d in %v\n", height, width, time.Now().Sub(started))
 }
 
 func run(height, width int) (*grid, error) {
@@ -248,17 +253,11 @@ func (g *grid) toPNG(path string, scale int, showCenter bool) error {
 	// and including room for the gutter
 	width, height := g.width*scale+gutter*2, g.height*scale+gutter*2
 
-	img := image.NewRGBA(image.Rect(0, 0, width, height))
-
-	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
-	black := color.RGBA{A: 255}
+	dc := gg.NewContext(width, height)
 
 	// set the background of the image to white
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
-			img.Set(x, y, white)
-		}
-	}
+	dc.SetRGB(1, 1, 1)
+	dc.Clear()
 
 	// the offset will be half the scale and allows for the gutter
 	offset := scale/2 + gutter
@@ -273,53 +272,50 @@ func (g *grid) toPNG(path string, scale int, showCenter bool) error {
 			cy := y*scale + offset
 
 			// derive values for the four corners of the cell
-			nw := image.Point{cx - scale/2, cy - scale/2}
-			ne := image.Point{cx + scale/2, cy - scale/2}
-			sw := image.Point{cx - scale/2, cy + scale/2}
-			se := image.Point{cx + scale/2, cy + scale/2}
-
-			// set a black pixel in each corner of the cell
-			img.Set(nw.X, nw.Y, black)
-			img.Set(ne.X, ne.Y, black)
-			img.Set(se.X, se.Y, black)
-			img.Set(sw.X, sw.Y, black)
-
-			// set a black pixel in the center of the cell if requested
-			if showCenter {
-				img.Set(cx, cy, black)
+			type point struct {
+				x, y float64
 			}
+			nw := point{x: float64(cx - scale/2), y: float64(cy - scale/2)}
+			ne := point{x: float64(cx + scale/2), y: float64(cy - scale/2)}
+			sw := point{x: float64(cx - scale/2), y: float64(cy + scale/2)}
+			se := point{x: float64(cx + scale/2), y: float64(cy + scale/2)}
+
+			// draw walls as black lines
+			dc.SetRGB(0, 0, 0)
+
+			// make the walls 3 pixels wide
+			dc.SetLineWidth(3)
 
 			// if there is a wall blocking the path north, draw a line from NW to NE corners.
 			if c.walls.north {
-				drawLine(img, nw, ne, black)
+				dc.DrawLine(nw.x, nw.y, ne.x, ne.y)
+				dc.Stroke()
 			}
 			// if there is a wal blocking the path east, draw a line from the NE to SE corners.
 			if c.walls.east {
-				drawLine(img, ne, se, black)
+				dc.DrawLine(ne.x, ne.y, se.x, se.y)
+				dc.Stroke()
 			}
 			// if there is a wall blocking the path south, draw a line from SE to SW corners.
 			if c.walls.south {
-				drawLine(img, se, sw, black)
+				dc.DrawLine(se.x, se.y, sw.x, sw.y)
+				dc.Stroke()
 			}
 			// if there is a wall blocking the path west, draw a line from the SW to NW corners.
 			if c.walls.west {
-				drawLine(img, sw, nw, black)
+				dc.DrawLine(sw.x, sw.y, nw.x, nw.y)
+				dc.Stroke()
 			}
 		}
 	}
 
 	// save the image as a PNG file
-	f, err := os.Create(path)
+	err := dc.SavePNG(path)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = f.Close()
-	}()
-	if err := png.Encode(f, img); err != nil {
-		return err
-	}
 	log.Printf("maze: created %s\n", path)
+
 	return nil
 }
 
