@@ -8,6 +8,7 @@ import (
 	"github.com/mdhender/maze"
 	"log"
 	"math/rand"
+	"os"
 	"time"
 )
 
@@ -22,6 +23,8 @@ func main() {
 	flag.IntVar(&scale, "scale", scale, "width of cells in rendered maze")
 	var pngFile string
 	flag.StringVar(&pngFile, "png", pngFile, "optional name of PNG image file to render")
+	var svgFile string
+	flag.StringVar(&svgFile, "svg", svgFile, "optional name of SVG image file to render")
 	var txtFile string
 	flag.StringVar(&txtFile, "text", txtFile, "optional name of text file to render")
 
@@ -42,7 +45,12 @@ func main() {
 
 	if txtFile != "" {
 		started = time.Now()
-		if err := rg.RenderText(txtFile); err != nil {
+		w, err := os.OpenFile(txtFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		} else if err = rg.RenderText(w); err != nil {
+			log.Fatal(err)
+		} else if err = w.Close(); err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("maze: created %s in %v\n", txtFile, time.Now().Sub(started))
@@ -50,9 +58,27 @@ func main() {
 
 	if pngFile != "" {
 		started = time.Now()
-		if err := rg.RenderPNG(pngFile, scale); err != nil {
+		w, err := os.OpenFile(pngFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		} else if err = rg.RenderPNG(w, scale); err != nil {
+			log.Fatal(err)
+		} else if err = w.Close(); err != nil {
 			log.Fatal(err)
 		}
 		log.Printf("maze: created %s in %v\n", pngFile, time.Now().Sub(started))
+	}
+
+	if svgFile != "" {
+		started = time.Now()
+		w, err := os.OpenFile(svgFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		} else if err = rg.RenderSVG(w, scale); err != nil {
+			log.Fatal(err)
+		} else if err = w.Close(); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("maze: created %s in %v\n", svgFile, time.Now().Sub(started))
 	}
 }
