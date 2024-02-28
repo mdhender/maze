@@ -23,6 +23,8 @@ func main() {
 	flag.IntVar(&scale, "scale", scale, "width of cells in rendered maze")
 	var pngFile string
 	flag.StringVar(&pngFile, "png", pngFile, "optional name of PNG image file to render")
+	var solve bool
+	flag.BoolVar(&solve, "solve", solve, "solve maze before rendering")
 	var svgFile string
 	flag.StringVar(&svgFile, "svg", svgFile, "optional name of SVG image file to render")
 	var txtFile string
@@ -37,7 +39,7 @@ func main() {
 	}
 
 	started := time.Now()
-	rg, err := maze.RectangleMaze(height, width)
+	rg, err := maze.RectangleMaze(height, width, solve)
 	if err != nil {
 		log.Fatal(err)
 	}

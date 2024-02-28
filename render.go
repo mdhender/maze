@@ -25,6 +25,7 @@ func (r *Rectangle) RenderText(w io.Writer) error {
 
 type line struct {
 	from, to point
+	onPath   bool
 }
 
 type point struct {
@@ -50,6 +51,7 @@ func (g *grid) toLines(scale int, gutter int) (height int, width int, lines []li
 			cy := y*scale + offset
 
 			// derive values for the four corners of the cell
+			cp := point{x: float64(cx), y: float64(cy)}
 			nw := point{x: float64(cx - scale/2), y: float64(cy - scale/2)}
 			ne := point{x: float64(cx + scale/2), y: float64(cy - scale/2)}
 			sw := point{x: float64(cx - scale/2), y: float64(cy + scale/2)}
@@ -71,6 +73,19 @@ func (g *grid) toLines(scale int, gutter int) (height int, width int, lines []li
 			if c.walls.west {
 				lines = append(lines, line{from: sw, to: nw})
 			}
+			// if the cell is on the path between the entrance and the exit, mark it.
+			// (note that the flag is only set if the user created the grid with the `solve` flag set.)
+			if c.onPath {
+				// make an "x" in the center of this cell
+				lenSlash := float64(scale/2) * 0.33
+				lines = append(lines, line{from: point{x: cp.x - lenSlash, y: cp.y - lenSlash}, to: point{x: cp.x + lenSlash, y: cp.y + lenSlash}, onPath: true})
+				lines = append(lines, line{from: point{x: cp.x - lenSlash, y: cp.y + lenSlash}, to: point{x: cp.x + lenSlash, y: cp.y - lenSlash}, onPath: true})
+
+				// make a "+" in the center of this cell
+				lenDash := float64(scale/2) * 0.33
+				lines = append(lines, line{from: point{x: cp.x, y: cp.y - lenDash}, to: point{x: cp.x, y: cp.y + lenDash}, onPath: true})
+				lines = append(lines, line{from: point{x: cp.x - lenDash, y: cp.y}, to: point{x: cp.x + lenDash, y: cp.y}, onPath: true})
+			}
 		}
 	}
 
@@ -89,10 +104,21 @@ func (g *grid) toPNG(w io.Writer, height, width int, lines []line) error {
 	// draw walls as black lines, 3 pixels wide
 	dc.SetRGB(0, 0, 0)
 	dc.SetLineWidth(3)
-
 	for _, l := range lines {
-		dc.DrawLine(l.from.x, l.from.y, l.to.x, l.to.y)
-		dc.Stroke()
+		if !l.onPath {
+			dc.DrawLine(l.from.x, l.from.y, l.to.x, l.to.y)
+			dc.Stroke()
+		}
+	}
+
+	// draw path markers as red lines, 3 pixels wide
+	dc.SetRGB(1, 0, 0)
+	dc.SetLineWidth(3)
+	for _, l := range lines {
+		if l.onPath {
+			dc.DrawLine(l.from.x, l.from.y, l.to.x, l.to.y)
+			dc.Stroke()
+		}
 	}
 
 	// write the image as PNG
@@ -217,8 +243,12 @@ func (g *grid) toText(w io.Writer) error {
 				glyph = ' '
 			}
 			maze[cRow][cCol-1] = glyph
-			// always set the center of the cell to a space
-			maze[cRow][cCol] = ' '
+			// usually set the center of the cell to a space
+			if c.onPath {
+				maze[cRow][cCol] = '*'
+			} else {
+				maze[cRow][cCol] = ' '
+			}
 		}
 	}
 
