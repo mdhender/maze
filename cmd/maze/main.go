@@ -21,16 +21,23 @@ func main() {
 	flag.IntVar(&width, "width", width, "width of maze (in cells)")
 	scale := 20
 	flag.IntVar(&scale, "scale", scale, "width of cells in rendered maze")
-	var pngFile string
+	var pngFile, pngSolvedFile string
 	flag.StringVar(&pngFile, "png", pngFile, "optional name of PNG image file to render")
-	var solve bool
-	flag.BoolVar(&solve, "solve", solve, "solve maze before rendering")
-	var svgFile string
+	flag.StringVar(&pngSolvedFile, "png-solved", pngSolvedFile, "optional name of PNG image file with solution")
+	var svgFile, svgSolvedFile string
 	flag.StringVar(&svgFile, "svg", svgFile, "optional name of SVG image file to render")
+	flag.StringVar(&svgSolvedFile, "svg-solved", svgSolvedFile, "optional name of SVG image file with solution")
 	var txtFile string
 	flag.StringVar(&txtFile, "text", txtFile, "optional name of text file to render")
+	var version bool
+	flag.BoolVar(&version, "version", version, "print version and exit")
 
 	flag.Parse()
+
+	if version {
+		log.Println("maze: 1.0.0")
+		return
+	}
 
 	// set seed only if we're testing changes
 	if testSeed != 0 {
@@ -39,7 +46,7 @@ func main() {
 	}
 
 	started := time.Now()
-	rg, err := maze.RectangleMaze(height, width, solve)
+	rg, err := maze.RectangleMaze(height, width, false)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -83,4 +90,32 @@ func main() {
 		}
 		log.Printf("maze: created %s in %v\n", svgFile, time.Now().Sub(started))
 	}
+
+	if pngSolvedFile != "" {
+		rg.Solve()
+		started = time.Now()
+		w, err := os.OpenFile(pngSolvedFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		} else if err = rg.RenderPNG(w, scale); err != nil {
+			log.Fatal(err)
+		} else if err = w.Close(); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("maze: created %s in %v\n", pngSolvedFile, time.Now().Sub(started))
+	}
+
+	if svgSolvedFile != "" {
+		started = time.Now()
+		w, err := os.OpenFile(svgSolvedFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			log.Fatal(err)
+		} else if err = rg.RenderSVG(w, scale); err != nil {
+			log.Fatal(err)
+		} else if err = w.Close(); err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("maze: created %s in %v\n", svgSolvedFile, time.Now().Sub(started))
+	}
+
 }

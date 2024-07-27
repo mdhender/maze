@@ -10,7 +10,10 @@ import (
 )
 
 type Rectangle struct {
-	g *grid
+	g        *grid
+	entrance *cell
+	exit     *cell
+	solved   bool
 }
 
 func RectangleMaze(height, width int, solve bool) (*Rectangle, error) {
@@ -161,7 +164,81 @@ func RectangleMaze(height, width int, solve bool) (*Rectangle, error) {
 		}
 	}
 
-	return &Rectangle{g: g}, nil
+	return &Rectangle{
+		g:        g,
+		entrance: entrance,
+		exit:     exit,
+	}, nil
+}
+
+func (r *Rectangle) Solve() {
+	if r.solved {
+		return
+	}
+	started := time.Now()
+	log.Printf("maze: solving maze\n")
+
+	// clear the walk pointers for this search
+	r.g.clearWalk()
+
+	// solve the maze using depth-first search
+	stack := []*cell{r.entrance}
+	r.entrance.visited = true
+	for !stack[len(stack)-1].isExit() {
+		// pop current cell off top of stack
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		//log.Printf("maze: depth %6d current %4d %4d\n", len(stack), current.row, current.col)
+
+		// optimization - if neighbor is the exit, push it and quit searching
+		if current.southIsOpen() {
+			if neighbor := current.neighbors.south; neighbor.isExit() {
+				neighbor.visited = true
+				neighbor.to = current
+				stack = append(stack, neighbor)
+				break
+			}
+		}
+
+		// push all neighbors that haven't yet been visited on to the stack
+		if current.northIsOpen() {
+			if neighbor := current.neighbors.north; !neighbor.hasBeenVisited() {
+				neighbor.visited = true
+				neighbor.to = current
+				stack = append(stack, neighbor)
+			}
+		}
+		if current.eastIsOpen() {
+			if neighbor := current.neighbors.east; !neighbor.hasBeenVisited() {
+				neighbor.visited = true
+				neighbor.to = current
+				stack = append(stack, neighbor)
+			}
+		}
+		if current.southIsOpen() {
+			if neighbor := current.neighbors.south; !neighbor.hasBeenVisited() {
+				neighbor.visited = true
+				neighbor.to = current
+				stack = append(stack, neighbor)
+			}
+		}
+		if current.westIsOpen() {
+			if neighbor := current.neighbors.west; !neighbor.hasBeenVisited() {
+				neighbor.visited = true
+				neighbor.to = current
+				stack = append(stack, neighbor)
+			}
+		}
+	}
+	log.Printf("maze: solved  %5d x %5d maze in %v\n", r.g.height, r.g.width, time.Now().Sub(started))
+
+	// flag each cell that is on the path between the entrance and the exit
+	for c := r.exit; c != nil; c = c.to {
+		c.onPath = true
+	}
+
+	r.solved = true
 }
 
 func SquareMaze(height int, solve bool) (*Rectangle, error) {
